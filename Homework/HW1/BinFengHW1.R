@@ -1,9 +1,9 @@
 ---
-title: "STAT480_Homework_1"
+  title: "STAT480_Homework_1"
 author: "Bin Feng"
 output: pdf_document
 ---
-```{r setup}
+  ```{r setup}
 #include library
 library(RSQLite)
 library(biganalytics)
@@ -50,7 +50,7 @@ Now we look at the similar delay information by month during that period. (Note:
 ```{r}
 #using SQL language FROM and GROUP BY
 total_month_80s <- dbGetQuery(delay.con, 
-                          "SELECT COUNT(*), Month FROM AirlineDelay1980s GROUP BY Month")
+                              "SELECT COUNT(*), Month FROM AirlineDelay1980s GROUP BY Month")
 total_month_80s
 ```
 The table for total number of flights by month is shown above. Note that the additional last line in the table is because of the header line in the database. 
@@ -58,7 +58,7 @@ The table for total number of flights by month is shown above. Note that the add
 (b) In a separate table, obtain the number of flights by month with departure delayed by more than 15 minutes in the 1980s in the data.
 ```{r}
 delay_month_gr15_80s <- dbGetQuery(delay.con, 
-                               "SELECT COUNT(*), Month FROM AirlineDelay1980s WHERE DepDelay > 15 GROUP BY Month")
+                                   "SELECT COUNT(*), Month FROM AirlineDelay1980s WHERE DepDelay > 15 GROUP BY Month")
 delay_month_gr15_80s
 ```
 The table for total number of flights by month with departure delayed by more than 15 minutes is shown above. Note that the additional last line in the table is because of the header line in the database. 
@@ -139,10 +139,10 @@ a) Calculate the percentage of flights delayed by more than 15 minutes for each 
 delay.con <- dbConnect(RSQLite::SQLite(), dbname = "AirlineDelay1980s.sqlite3")
 #calcute the total flight by week 
 total_week_80s <- dbGetQuery(delay.con, 
-                          "SELECT COUNT(*), DayOfWeek FROM AirlineDelay1980s GROUP BY DayOfWeek")
+                             "SELECT COUNT(*), DayOfWeek FROM AirlineDelay1980s GROUP BY DayOfWeek")
 #calculate the delay rate by week, the last addition line is due to the header line
 delay_week_gr15_80s <- dbGetQuery(delay.con, 
-                               "SELECT COUNT(*), DayOfWeek FROM AirlineDelay1980s WHERE DepDelay > 15 GROUP BY DayOfWeek")
+                                  "SELECT COUNT(*), DayOfWeek FROM AirlineDelay1980s WHERE DepDelay > 15 GROUP BY DayOfWeek")
 #Calculate the percentage
 delay_per_week_80s <- delay_week_gr15_80s[1:7,1] / total_week_80s[1:7,1] * 100
 delay_per_week_80s <- cbind(delay_per_week_80s, delay_week_gr15_80s[1:7,2])
