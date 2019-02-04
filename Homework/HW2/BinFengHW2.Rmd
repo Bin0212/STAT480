@@ -1,0 +1,105 @@
+---
+title: "STAT480_Homework_2"
+author: "Bin Feng"
+output: pdf_document
+---
+
+```{r setup}
+#include library
+library(reshape2)
+library(ggplot2)
+library(biganalytics)
+library(foreach)
+library(parallel)
+library(doSNOW)
+require("knitr")
+#set working directory
+opts_knit$set(root.dir = "~/Stat480/RDataScience/AirlineDelays")
+```
+#Question 1
+A traveler is planning a trip for July 2009 and wonders about the amount of departure delay they might encounter. They have the data from 2007 and 2008 and want to look at delays that are at least of median length. Obtain the 50th through 99th percentiles for July data in those years and interpret what the results tell us about magnitudes and frequency of delayed departures in July during those two years.
+```{r}
+#Attach the same big matrix to flight0708 using the descriptor file without creating any new large matrix
+flight0708 <- attach.big.matrix("air0708.desc")
+
+# machine minus one.
+numParallelCores <- max(1, detectCores()-1)
+# Create the parallel processes.
+cl <- makeCluster(rep("localhost", numParallelCores), 
+                  type = "SOCK")
+# Register the parallel processes with foreach.
+registerDoSNOW(cl)
+
+# Create a variable to hold the quantile probabilities.
+myProbs <- seq(0.5, 0.99, 0.035)
+
+month.index <- split(1:nrow(flight0708), flight0708[,"Month"])
+
+delayQuantiles.July <- foreach( month = month.index[7], .combine=cbind) %do% {
+  quantile(flight0708[month, "DepDelay"], myProbs, 
+           na.rm = TRUE)
+}
+#colnames(delayQuantiles.July) <- c("percentile", "delay")
+stopCluster(cl)
+delayQuantiles.July
+delayQuantiles.July <- as.data.frame(delayQuantiles.July)
+# See delay quantiles for the data.
+
+library(ggplot2)
+
+qplot(myProbs, delayQuantiles.July, data = delayQuantiles.July, geom = "line")
+
+```
+
+#Question 2
+The traveler is also curious about differences in departure delay percentiles for July during those two years. Compute and compare the 50th through 99th percentiles for July 2007 and July 2008. Provide an informative visualization along with interpretation of similarities and differences in the delay quantiles.
+```{r}
+# machine minus one.
+numParallelCores <- max(1, detectCores()-1)
+# Create the parallel processes.
+cl <- makeCluster(rep("localhost", numParallelCores), 
+                  type = "SOCK")
+# Register the parallel processes with foreach.
+registerDoSNOW(cl)
+
+# Create a variable to hold the quantile probabilities.
+myProbs <- seq(0.5, 0.99, 0.035)
+
+Month07 <- flight0708[which(flight0708[,"Month"] == '7'), ]
+year.index <- split(1:nrow(Month07), Month07[,"Year"])
+
+delayQuantiles.July <- foreach( year = year.index, .combine=cbind) %do% {
+  quantile(flight0708[year, "DepDelay"], myProbs, 
+           na.rm = TRUE)
+}
+# Clean up the column names.
+colnames(delayQuantiles.July) <- names(year.index)
+
+#colnames(delayQuantiles.July) <- c("percentile", "delay")
+stopCluster(cl)
+
+dq <- melt(delayQuantiles.July)
+names(dq) <- c("percentile", "year", "delay")
+ggplot(data=dq,
+       aes(x=percentile, y=delay, group=factor(year), color=factor(year))) +
+       geom_line()
+```
+
+#Question 3
+Consider month and day of week as continuous linear predictors for departure delay. Obtain a linear regression model for departure delay as a function of month and day of week using the 2007-2008 data. Interpret what the model suggests about the relationship between delay time and the day of week and month. Comment on the usefulness of the model and any issues with using this model.
+```{r}
+delay.model01 <- lm(flight0708[, "DepDelay"] ~ flight0708[, "Month"] + flight0708[, "DayOfWeek"])
+summary(delay.model01)
+```
+
+#Question 4
+Rather than a straight linear trend, it is suggested that delays might be much worse in winter and not as bad in summer. Likewise, it is suggested that delays might get increasingly worse as the week goes on.
+```{r}
+delay.model02 <- lm(flight0708[, "DepDelay"] ~ I((flight0708[, "Month"] - 6)^2) + I(flight0708[, "DayOfWeek"]^2))
+summary(delay.model02)
+```
+
+
+
+
+
