@@ -10,95 +10,76 @@ library(reshape2)
 library(ggplot2)
 library(biganalytics)
 library(foreach)
-library(parallel)
-library(doSNOW)
 require("knitr")
 #set working directory
 opts_knit$set(root.dir = "~/Stat480/RDataScience/AirlineDelays")
 ```
+
 #Question 1
 A traveler is planning a trip for July 2009 and wonders about the amount of departure delay they might encounter. They have the data from 2007 and 2008 and want to look at delays that are at least of median length. Obtain the 50th through 99th percentiles for July data in those years and interpret what the results tell us about magnitudes and frequency of delayed departures in July during those two years.
 ```{r}
-#Attach the same big matrix to flight0708 using the descriptor file without creating any new large matrix
+# Attach the same big matrix to flight0708 using the descriptor file without 
+# creating any new large matrix
 flight0708 <- attach.big.matrix("air0708.desc")
-
-# machine minus one.
-numParallelCores <- max(1, detectCores()-1)
-# Create the parallel processes.
-cl <- makeCluster(rep("localhost", numParallelCores), 
-                  type = "SOCK")
-# Register the parallel processes with foreach.
-registerDoSNOW(cl)
-
+# Extrack July data from 0708
+Month07 <- flight0708[(flight0708[,"Month"] == '7'), ]
 # Create a variable to hold the quantile probabilities.
-myProbs <- seq(0.5, 0.99, 0.035)
-
-month.index <- split(1:nrow(flight0708), flight0708[,"Month"])
-
-delayQuantiles.July <- foreach( month = month.index[7], .combine=cbind) %do% {
-  quantile(flight0708[month, "DepDelay"], myProbs, 
-           na.rm = TRUE)
+myProbs <- seq(0.5, 0.99, 0.01)
+# foreach loop to calculate the quantile
+delayQuantiles.July <- foreach(month = list(1:nrow(Month07)), .combine=cbind) %do% {
+  quantile(Month07[month, "DepDelay"], myProbs, na.rm = TRUE)
 }
-#colnames(delayQuantiles.July) <- c("percentile", "delay")
-stopCluster(cl)
 delayQuantiles.July
-delayQuantiles.July <- as.data.frame(delayQuantiles.July)
-# See delay quantiles for the data.
-
-library(ggplot2)
-
-qplot(myProbs, delayQuantiles.July, data = delayQuantiles.July, geom = "line")
-
+# plot
+qplot(myProbs, delayQuantiles.July, data = as.data.frame(delayQuantiles.July), 
+      geom = "line", xlab = "Percentile", ylab = "Delay (min)")
 ```
+Based on the results, as the percentile increases (meaning the frequency of encountering such event decreases), the magnitude of delay time also increases. For the 50th percentile, the delay time is 0 minute, meaning the flight will depart on time. For the 80th percentile, the delay time are 19 minutes. One may also be interested in the 90th percentile since it is still likely to happen. The delay time are 47 minutes, which is also acceptable. If we look at the 99th percentile, 185 minutes of delay will occur for those unfortunate 1 percent passengers.  
 
 #Question 2
 The traveler is also curious about differences in departure delay percentiles for July during those two years. Compute and compare the 50th through 99th percentiles for July 2007 and July 2008. Provide an informative visualization along with interpretation of similarities and differences in the delay quantiles.
 ```{r}
-# machine minus one.
-numParallelCores <- max(1, detectCores()-1)
-# Create the parallel processes.
-cl <- makeCluster(rep("localhost", numParallelCores), 
-                  type = "SOCK")
-# Register the parallel processes with foreach.
-registerDoSNOW(cl)
-
 # Create a variable to hold the quantile probabilities.
-myProbs <- seq(0.5, 0.99, 0.035)
-
-Month07 <- flight0708[which(flight0708[,"Month"] == '7'), ]
+myProbs <- seq(0.5, 0.99, 0.01)
+# split the data into two parts based on years, obtain the index
 year.index <- split(1:nrow(Month07), Month07[,"Year"])
-
+# foreach loop to calculate the quantile
 delayQuantiles.July <- foreach( year = year.index, .combine=cbind) %do% {
-  quantile(flight0708[year, "DepDelay"], myProbs, 
-           na.rm = TRUE)
+  quantile(Month07[year, "DepDelay"], myProbs, na.rm = TRUE)
 }
 # Clean up the column names.
-colnames(delayQuantiles.July) <- names(year.index)
-
-#colnames(delayQuantiles.July) <- c("percentile", "delay")
-stopCluster(cl)
-
-dq <- melt(delayQuantiles.July)
-names(dq) <- c("percentile", "year", "delay")
-ggplot(data=dq,
-       aes(x=percentile, y=delay, group=factor(year), color=factor(year))) +
-       geom_line()
+delayQuantiles.July <- cbind(myProbs, delayQuantiles.July)
+colnames(delayQuantiles.July) <- c("Percentile", "2007", "2008")
+# plot
+ggplot(as.data.frame(delayQuantiles.July), aes(x=Percentile)) + 
+  geom_line(aes(y = delayQuantiles.July[,"2007"], colour = "2007")) + 
+  geom_line(aes(y = delayQuantiles.July[,"2008"], colour = "2008")) + 
+  xlab("Percentile") + ylab("Delay (min)") + theme(legend.title=element_blank())
 ```
+Plot is shown above. Comparing the delay quantiles between 2007 and 2008, we note that they have the similar trend: as the percentile increases, the magnitude of delay time also increases. But we also notice that the plotted line for 2008 is always below the line of 2007, meaning the delay time is less if we are comparing the same percentile. 
 
 #Question 3
 Consider month and day of week as continuous linear predictors for departure delay. Obtain a linear regression model for departure delay as a function of month and day of week using the 2007-2008 data. Interpret what the model suggests about the relationship between delay time and the day of week and month. Comment on the usefulness of the model and any issues with using this model.
 ```{r}
-delay.model01 <- lm(flight0708[, "DepDelay"] ~ flight0708[, "Month"] + flight0708[, "DayOfWeek"])
+# use biglm.big.matrix() here. But since the data isn't very big, direct using 
+# lm() is acceptable.
+delay.model01 <- biglm.big.matrix(DepDelay ~ Month + DayOfWeek, data = flight0708)
 summary(delay.model01)
+summary(delay.model01)$rsq
 ```
+Looking at the summary for this model, it suggests that as the month number incrases, the delay time will decrease. On the opposit, as the day of week increase, the delay time will increase. However, this model is quite useless because the residual sum of square for this model is only 0.0004415451, which indicates that even though these two variables ara statisticaly significant, they have only explained a very tiny amount of the data. Therefore, using this model will cause large inaccuracy. 
 
 #Question 4
 Rather than a straight linear trend, it is suggested that delays might be much worse in winter and not as bad in summer. Likewise, it is suggested that delays might get increasingly worse as the week goes on.
 ```{r}
-delay.model02 <- lm(flight0708[, "DepDelay"] ~ I((flight0708[, "Month"] - 6)^2) + I(flight0708[, "DayOfWeek"]^2))
+# use biglm.big.matrix() here. But since the data isn't very big, direct using 
+# lm() is acceptable.
+delay.model02 <- biglm.big.matrix(DepDelay ~ I((Month - 6)^2) + I((DayOfWeek)^2), 
+                                  data = flight0708)
 summary(delay.model02)
+summary(delay.model02)$rsq
 ```
-
+Looking at the summary for this model, it suggests that as the month moving towards winter season, the delay time increases. Also, as the day of week increase, the delay time will increase. However, this model is also quite useless because of its residual sum of square, which is even lower than the value in calculated for the linear model discussed in question 3. Comparing this two models, variable "Day of Week" has the same effect to the delay time in both models; variable "Month" has a negative effect to the delay time in the linear model which "(Month - 6)^2" has a postive effect to the delay time in the quatratic model. But since both of the models have very low residual sum of square, neither of them should be used for any interpretation or prediction without further modification.
 
 
 
