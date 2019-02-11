@@ -1,0 +1,174 @@
+---
+title: "BinFengHW3"
+author: "Bin Feng"
+output: pdf_document
+---
+```{r setup}
+#include library
+require("knitr")
+#set working directory
+opts_knit$set(root.dir = "~/Stat480/Homework")
+```
+
+```{r}
+# The following initial code is given by Darren Glosemeyer. The contents of this 
+# include segments of code from Chapter 3 up through section 3.5.4. The following 
+# lines from previous sections are needed to define sampleSplit, getBoundary,
+# and dropAttach.
+
+spamPath = "~/Stat480/RDataScience/SpamAssassinMessages"
+
+dirNames = list.files(path = paste(spamPath, "messages", 
+                                   sep = .Platform$file.sep))
+fullDirNames = paste(spamPath, "messages", dirNames, 
+                     sep = .Platform$file.sep)
+
+indx = c(1:5, 15, 27, 68, 69, 329, 404, 427, 516, 852, 971)
+fn = list.files(fullDirNames[1], full.names = TRUE)[indx]
+sampleEmail = sapply(fn, readLines)
+
+splitMessage = function(msg) {
+  splitPoint = match("", msg)
+  header = msg[1:(splitPoint-1)]
+  body = msg[ -(1:splitPoint) ]
+  return(list(header = header, body = body))
+}
+
+sampleSplit = lapply(sampleEmail, splitMessage)
+
+getBoundary = function(header) {
+  boundaryIdx = grep("boundary=", header)
+  boundary = gsub('"', "", header[boundaryIdx])
+  gsub(".*boundary= *([^;]*);?.*", "\\1", boundary)
+}
+
+dropAttach = function(body, boundary){
+  
+  bString = paste("--", boundary, sep = "")
+  bStringLocs = which(bString == body)
+  
+  # if there are fewer than 2 beginning boundary strings, 
+  # there is on attachment to drop
+  if (length(bStringLocs) <= 1) return(body)
+  
+  # do ending string processing
+  eString = paste("--", boundary, "--", sep = "")
+  eStringLoc = which(eString == body)
+  
+  # if no ending boundary string, grab contents between the first 
+  # two beginning boundary strings as the message body
+  if (length(eStringLoc) == 0) 
+    return(body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1)])
+  
+  # typical case of well-formed email with attachments
+  # grab contents between first two beginning boundary strings and 
+  # add lines after ending boundary string
+  n = length(body)
+  if (eStringLoc < n) 
+    return( body[ c( (bStringLocs[1] + 1) : (bStringLocs[2] - 1), 
+                     ( (eStringLoc + 1) : n )) ] )
+  
+  # fall through case
+  # note that the result is the same as the 
+  # length(eStringLoc) == 0 case, so code could be simplified by 
+  # dropping that case and modifying the eStringLoc < n check to 
+  # be 0 < eStringLoc < n
+  return( body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1) ])
+}
+
+# Set the working directory. This is where R will look for files and save files if a full path is not specified.
+# setwd("~/Stat480/RDataScience/Chapter3")
+```
+# Question 1
+Write a function to extract the subject from messages. This is the value for the Subject key (Be sure to allow for capital or lower case s when searching for Subject in the header). The function should take the header from a message and return the subject value, and also handle the case where no Subject key is present in the header.
+Demonstrate your function on the headers from the 15 sample emails used in the chapter.
+```{r}
+headerList = lapply(sampleSplit, function(msg) msg$header)
+getSubject = function(header){
+  # tolower() to allow both capital and lower cases
+  subject.index = grep("subject:", tolower(header))
+  # allow no subject line cases
+  if (subject.index == 0) return(0)
+  # main subject extract part
+  subject = header[subject.index]
+  sub('Subject: (.*)', "\\1", subject)
+}
+# test with all 15 sample cases
+unname(sapply(headerList, getSubject))
+
+# get the wholeline
+# getfull = function(header){
+#   subject.index = grep("subject:", tolower(header))
+#   subject = header[subject.index]
+# }
+```
+
+# Question 2
+Write a function to count the letters from a message subject line. The function should take in a
+message header and return an integer (the number of letters in the subject line). Make use of the function created in exercise 1 and use modular programming to create your function. Again make sure to handle the missing Subject key case.
+Demonstrate your function on the 15 sample emails from the chapter.
+```{r}
+countLetter = function(header){
+  subject = unname(sapply(header, getSubject))
+  subject.letter = gsub("[^a-zA-Z]+", "", subject) #do we need to get rid of [], ..
+  nchar(subject.letter)
+}
+
+countLetter(headerList)
+```
+
+# Question 3
+Write a function to count the number of digits (0, 1, 2, 3, 4, 5, 6, 7, 8, or 9) in an email message body. The function should take a split email message (the result from the splitMessage function in the chapter) and return the number of digits in the body. Drop attachments and only count digits not in attachments.
+Again, show the results of your function for the sample emails.
+```{r}
+
+countNumber = function(sample){
+  headerList = lapply(sample, function(msg) msg$header)
+  bodyList = lapply(sample, function(msg) msg$body)
+  
+  #from course code 
+  # determine which messages have attachments
+  hasAttach = sapply(headerList, function(header) {
+    CTloc = grep("Content-Type", header)
+    if (length(CTloc) == 0) return(0)
+    multi = grep("multi", tolower(header[CTloc])) 
+    if (length(multi) == 0) return(0)
+    multi
+  })
+  
+  hasAttach = which(hasAttach > 0)
+  
+  # find boundary strings for messages with attachments
+  boundaries = sapply(headerList[hasAttach], getBoundary)
+  
+  bodyList[hasAttach] = mapply(dropAttach, bodyList[hasAttach], 
+                               boundaries, SIMPLIFY = FALSE)
+  
+  subject.number = gsub("[^0-9]+", "", bodyList) #do we need to get rid of [], ..
+  nchar(subject.number)
+}
+
+countNumber(sampleSplit)
+```
+
+# Question 4
+Write a function to obtain the number of digits in each email in a directory (e.g. easy_ham, easy_ham_2, etc.) that relies on the function written in exercise 3. The function should take a directory name as its input and return a vector of the digits counts for messages in that directory as its output. (Note: the initial processing from processAllWords in section 3.5.4 of the text is a good example for processing a directory of messages.)
+Obtain basic summary statistics for the digits per message for each of the 5 email directories, and comment on differences in digits per message in the 5 directories. What do these differences suggest about using number of digits in a message as a basis for classifying spam and ham messages?
+```{r}
+countAll = function(dirName){
+  # read all files in the directory
+  fileNames = list.files(dirName, full.names = TRUE)
+  # drop files that are not email, i.e., cmds
+  notEmail = grep("cmds$", fileNames)
+  if ( length(notEmail) > 0) fileNames = fileNames[ - notEmail ]
+  
+  messages = lapply(fileNames, readLines, encoding = "latin1")
+  
+  # split header and body
+  emailSplit = lapply(messages, splitMessage)
+  
+  countNumber(emailSplit)
+}
+
+countAll(fullDirNames[1]) #incomplete final line found on...
+```
