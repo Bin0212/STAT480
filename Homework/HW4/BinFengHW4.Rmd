@@ -1,0 +1,171 @@
+---
+title: "STAT480_Homework_4"
+author: "Bin Feng"
+output: pdf_document
+---
+
+```{r setup}
+#include library
+require("knitr")
+#set working directory
+opts_knit$set(root.dir = "~/Stat480/Homework")
+```
+# Setup
+```{r}
+#run setup code from another .R file
+source("HW4Setup.R")
+```
+# Question 1
+Create a function computeMsgLLR2 which implements the log of ratios of products of probabilities formula for the log likelihood ratio statistic. Compare the results from this definition with the results from the computeMsgLLR function used in the text which used the sum of differences of log probabilities. 
+Specifically, compare accuracy for this formula compared to the one used in class (Hint: to estimate relative accuracy you should look at (observed-expected)/expected, and treat the results from computeMsgLLR2 as observed and the results from computeMsgLLR as expected) and note any issues that arise with non-representable numbers (e.g. very large or very small intermediate results that result in infinite, incorrect 0, or not a number results from your function).
+```{r}
+# from course code
+computeMsgLLR = function(words, freqTable) 
+{
+  # Discards words not in training data.
+  words = words[!is.na(match(words, colnames(freqTable)))]
+  
+  # Find which words are present
+  present = colnames(freqTable) %in% words
+  
+  sum(freqTable["presentLogOdds", present]) +
+    sum(freqTable["absentLogOdds", !present])
+}
+
+# not + .5 because division evaluated first
+computeFreqs2 =
+  function(wordsList, spam, bow = unique(unlist(wordsList)))
+  {
+    # create a matrix for spam, ham, and log odds
+    wordTable = matrix(0.5, nrow = 4, ncol = length(bow), 
+                       dimnames = list(c("spam", "ham", 
+                                         "presentLogOdds", 
+                                         "absentLogOdds"),  bow))
+    
+    # For each spam message, add 1/2 to counts for words in message
+    counts.spam = table(unlist(lapply(wordsList[spam], unique)))
+    wordTable["spam", names(counts.spam)] = counts.spam
+    
+    # Similarly for ham messages
+    counts.ham = table(unlist(lapply(wordsList[!spam], unique)))  
+    wordTable["ham", names(counts.ham)] = counts.ham 
+    
+    
+    # Find the total number of spam and ham
+    numSpam = sum(spam)
+    numHam = length(spam) - numSpam
+    
+    # Prob(word|spam) and Prob(word | ham)
+    wordTable["spam", ] = wordTable["spam", ]/(numSpam)
+    wordTable["ham", ] = wordTable["ham", ]/(numHam)
+    
+    # log odds
+    wordTable["presentLogOdds", ] = 
+      wordTable["spam",] / wordTable["ham", ]
+    wordTable["absentLogOdds", ] = 
+      (1 - wordTable["spam", ]) / (1 -wordTable["ham", ])
+    
+    invisible(wordTable)
+  }
+
+computeMsgLLR2 = function(words, freqTable) 
+{
+  # Discards words not in training data.
+  words = words[!is.na(match(words, colnames(freqTable)))]
+  
+  # Find which words are present
+  present = colnames(freqTable) %in% words
+  
+  log(prod(freqTable["presentLogOdds", present])) +
+    log(prod(freqTable["absentLogOdds", !present]))
+}
+
+trainTable2 = computeFreqs2(trainMsgWords, trainIsSpam) 
+
+testLLR1 = sapply(testMsgWords, computeMsgLLR, trainTable)
+testLLR2 = sapply(testMsgWords, computeMsgLLR2, trainTable2) #how does this sapply works?
+
+relative.accuracy = (testLLR2 - testLLR1) / testLLR1
+```
+
+# Question 2
+Do exercise Q.13 from page 167 of Data Science in R: A Case Studies Approach to Computational Reasoning and Problem Solving, by Deborah Nolan and Duncan Temple Lang. Within the exercise, construct two functions: one that counts the number of yelling lines, and one that gives the percentage.
+```{r}
+#body or entire text??
+isYelling.num = function(msg) {
+  body = msg$body
+  if(length(body) == 0) return("no body")
+  else{
+    # remove non-alpha characters
+    body = gsub("[^[:alpha:]]", "", body)
+    index.not.empty = which(nchar(body) > 0)
+    index.yell = which(nchar(gsub("[A-Z]", "", body[index.not.empty])) < 1)
+    return(length(index.yell))
+  }
+}
+
+isYelling.per = function(msg) {
+  body = msg$body
+  if(length(body) == 0) return("no body")
+  else{
+    # remove non-alpha characters
+    body = gsub("[^[:alpha:]]", "", body)
+    index.not.empty = which(nchar(body) > 0)
+    index.yell = which(nchar(gsub("[A-Z]", "", body[index.not.empty])) < 1)
+    return(length(index.yell)/length(index.not.empty)) #count empty line or not?
+  }
+}
+#unlist(unname(lapply(emailStruct, isYelling.num)))
+#unlist(unname(lapply(emailStruct, isYelling.per)))
+
+```
+# Question 3
+Check that the hour feature in emailDF gives valid values for all of the email messages. Then perform descriptive analysis to compare this feature for spam and ham, and comment on the possibility of using this feature to classify email.
+```{r}
+library(RColorBrewer)
+cols = brewer.pal(12, "Set3")
+#emailDF$hour
+isSpamLabs = factor(emailDF$isSpam, labels = c("ham", "spam"))
+mosaicplot(table(isSpamLabs, emailDF$hour), main = "",
+           xlab = "", ylab = "", color = cols)
+barplot(table(isSpamLabs, emailDF$hour),beside = TRUE)
+
+```
+# Question 4
+Do exercise Q.14 from page 167 of Data Science in R: A Case Studies Approach to Computational Reasoning and Problem Solving, by Deborah Nolan and Duncan Temple Lang.
+```{r}
+# Original
+isRe = function(msg){
+  # Can have a Fwd: Re:  ... but we are not looking for this here.
+  # We may want to look at In-Reply-To field.
+  "Subject" %in% names(msg$header) && 
+    length(grep("^[ \t]*Re:", msg$header[["Subject"]])) > 0
+}
+
+# Alternative 1
+isRe1 = function(msg){
+  "Subject" %in% names(msg$header) && 
+    (length(grep("^[ \t]*Re:", msg$header[["Subject"]])) > 0 || # why this is start from the beginning, what is ^
+       length(grep("^[ \t]*Fwd: Re", msg$header[["Subject"]])) > 0 ) # looking for Fwd: or Fwd:Re: or Re[2] in easyham740
+}
+
+# Alternative 2
+isRe2 = function(msg){
+  "Subject" %in% names(msg$header) && 
+       length(grep("Re:", msg$header[["Subject"]])) > 0 
+}
+
+idx = which(lapply(emailStruct, isRe)==TRUE)
+idx1 =  which(lapply(emailStruct, isRe1)==TRUE)
+idx2 = which(lapply(emailStruct, isRe2)==TRUE)
+# total
+sum(lapply(emailStruct, isRe) == TRUE)
+# isSpam
+sum(emailDF$isSpam[idx])
+
+sum(lapply(emailStruct, isRe1) == TRUE)
+sum(emailDF$isSpam[idx1])
+sum(lapply(emailStruct, isRe2) == TRUE)
+sum(emailDF$isSpam[idx2])
+
+```
