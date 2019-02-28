@@ -1,0 +1,294 @@
+---
+title: "BinFengIP"
+author: "Bin Feng"
+date: "2/29/2019"
+output: pdf_document
+---
+#Setup
+```{r setup}
+# include library
+# bigmemory package used by biganalytics allows for R matrix-like operations on large data sets.
+library(biganalytics)
+library(ggplot2)
+
+library(rpart)
+library(RColorBrewer)
+library(rpart.plot)
+require("knitr")
+# set working directory
+source("IndividualProjectSetup.R")
+opts_knit$set(root.dir = "~/Stat480/RDataScience/AirlineDelays")
+```
+#Airline Delay Exercises
+##1
+Create a big.matrix object for the airline data from 1990 to 1995, and add an additional variable to the matrix that indicates if the arrival was delayed. The variable should be 1 for arrival delays greater than 0 and 0 for arrival delays of 0 or less. Be sure to show the contents of any script files you ran at command line and any commands you ran at command line to process the data. These command line steps can be included as text in the report.
+```{r}
+# flight9095.csv was created in shell first by combining files from 1990 to 1995
+# shell code as show below:
+  # cp 1990.csv flight9095.csv
+  #         for year in {1991..1995}
+  #                 do
+  #                 tail -n+2 $year.csv >>flight9095.csv
+  # done
+
+# First time use, create a big.matrix and .desc file for future use
+  # x <- read.big.matrix("flight9095.csv", header = TRUE, 
+  #                      backingfile = "flight9095.bin",
+  #                      descriptorfile = "flight9095.desc",
+  #                      type = "integer", extraCols = "ifdelay")
+
+# Attach the same big matrix to y using the descriptor file. This allows to use 
+# an existing big matrix without recreating it.
+x <- attach.big.matrix("flight9095.desc")
+
+# fill the "ifdelay" column, postive delay = 1, 0/negative delay = 0, NA is NA.
+x[,"ifdelay"] <- as.numeric(x[,"ArrDelay"] > 0)
+
+# Count number of flights with known positive delayed arrival
+pos.delay <- sum(x[,"ifdelay"] == 1, na.rm = TRUE)
+pos.delay
+# Count number of flights without known positive delayed arrival
+nonpos.delay <- nrow(x) - pos.delay
+nonpos.delay
+# compute percentage of flights with known positive delayed arrivals
+perpos.delay <- pos.delay / nrow(x)
+perpos.delay
+# average known arrival time deviation from expected
+mean(x[,"ArrDelay"], na.rm = TRUE)
+```
+
+##2
+Obtain quarterly results for arrival delay percentiles (include all numeric values for arrival delays), average known arrival deviations (again, include all numeric values for arrival delays), and percentages of flights with known positive delay. For the percentiles, obtain enough percentiles to make a plot from 5% to 95%. Be efficient and avoid going through the data more often than necessary.
+```{r}
+# ??? why different than the value in Q1
+quarter <- split(1:nrow(x), floor(x[,"Month"]/3.1)) 
+
+# compute average known arrival deviations
+quarter.delay.ave <- foreach(quarter.id = quarter, .combine = c) %do% {
+  mean(x[quarter.id, "ArrDelay"], na.rm = TRUE)
+}
+# quarterly arrivial deviations
+quarter.delay.ave
+# average deviations
+mean(quarter.delay.ave) # ??? why different than the value in Q1
+
+# compute arrival delay percentiles
+myProbs <- seq(0.05, 0.95, 0.05)
+
+# Use foreach to find the quantiles for each hour.
+delayQuantiles <- foreach(quarter.id = quarter, .combine=cbind) %do% {
+  quantile(x[quarter.id, "ArrDelay"], myProbs, 
+           na.rm = TRUE)
+}
+delayQuantiles <- cbind(myProbs, delayQuantiles)
+colnames(delayQuantiles) <- c("Percentile", "1","2","3","4")
+
+# plot the quarterly arrival delay percentiles from 5% to 95% 
+ggplot(as.data.frame(delayQuantiles), aes(x=Percentile)) + 
+  geom_line(aes(y = delayQuantiles[,"1"], colour = "1")) + 
+  geom_line(aes(y = delayQuantiles[,"2"], colour = "2")) + 
+  geom_line(aes(y = delayQuantiles[,"3"], colour = "3")) + 
+  geom_line(aes(y = delayQuantiles[,"4"], colour = "4")) + 
+  xlab("Percentile") + ylab("Delay (min)") + theme(legend.title=element_blank())
+
+# compute quarterly percentages of flightes with known positive delay
+# is this quarterly???
+quarter.delay.per <- foreach(quarter.id = quarter, .combine = c) %do% {
+  sum(x[quarter.id, "ArrDelay"] > 0, na.rm = TRUE) / length(quarter.id)
+}
+quarter.delay.per
+
+```
+
+#Spam Detection Exercises
+##3
+We used probabilities that a word did or did not appear in a message as the basis for Naive Bayes classificationin class. Now let's consider combining the words present and absent in the text with the hour of day the message was sent as the basis for a Naive Bayes classification.
+```{r}
+#??? do we need to +0.5 for hour table
+#??? how to reference data.frame using apply
+#??? how to index spam???
+computeHrs =
+  function(msgDF)
+  {
+    # create a matrix for spam, ham, and log odds
+    wordTable = matrix(0.5, nrow = 4, ncol = 24, 
+                       dimnames = list(c("spam", "ham", 
+                                         "presentLogOdds", 
+                                         "absentLogOdds"),  seq(0,23)))
+    hours = seq(0, 23)
+    count.spam = vector()
+    count.ham = vector()
+    
+    for(i in 1:24){
+      count.spam[i] = sum(msgDF$isSpam == TRUE & msgDF$hour == i-1)
+      wordTable["spam", i] = count.spam[i]
+    }
+    
+    for(i in 1:24){
+      count.ham[i] = sum(msgDF$isSpam == FALSE & msgDF$hour == i-1)
+      wordTable["ham", i] = count.ham[i]
+    }
+    
+    # Prob(hour | spam) and Prob(hour | ham)
+    wordTable["spam", ] = wordTable["spam", ]/(numSpam)
+    wordTable["ham", ] = wordTable["ham", ]/(numHam)
+    
+    # log odds
+    wordTable["presentLogOdds", ] = 
+      log(wordTable["spam",]) - log(wordTable["ham", ])
+    wordTable["absentLogOdds", ] = 
+      log((1 - wordTable["spam", ])) - log((1 -wordTable["ham", ]))
+    
+    invisible(wordTable)
+  }
+
+hourTable = computeHrs(emailDF[c(-testHamIdx, -(testSpamIdx+numHam)),]) 
+
+computeHrsLLR = function(msgDF, hourTable)  #??? how to reference data.frame using apply
+{
+  sum(hourTable["presentLogOdds", msgDF["hour"]]) +
+    sum(hourTable["absentLogOdds", !msgDF["hour"]])
+}
+
+testIsSpam = rep(c(FALSE, TRUE), c(length(testHamIdx), length(testSpamIdx)))
+
+testLLR.hrs = apply(emailDF[c(testHamIdx, testSpamIdx+numHam),], 1,computeHrsLLR, hourTable) #??? how to index spam???
+tapply(testLLR.hrs, testIsSpam, summary)
+
+testLLR.msg = sapply(msgWordsList[c(testHamIdx, testSpamIdx+numHam)], computeMsgLLR, trainTable)
+tapply(testLLR.msg, testIsSpam, summary)
+
+testLLR.all = testLLR.hrs + testLLR.msg
+
+tapply(testLLR.all, testIsSpam, summary)
+xI = typeIErrorRates(testLLR.all, testIsSpam) 
+xII = typeIIErrorRates(testLLR.all, testIsSpam)
+tau01 = round(min(xI$values[xI$error <= 0.01]))
+t2 = max(xII$error[ xII$values < tau01 ])
+t2
+
+
+
+cols = brewer.pal(9, "Set1")[c(3, 4, 5)]
+plot(xII$error ~ xII$values,  type = "l", col = cols[1], lwd = 3,
+     xlim = c(-300, 250), ylim = c(0, 1),
+     xlab = "Log Likelihood Ratio Values", ylab="Error Rate")
+points(xI$error ~ xI$values, type = "l", col = cols[2], lwd = 3)
+legend(x = 50, y = 0.4, fill = c(cols[2], cols[1]),
+       legend = c("Classify Ham as Spam", 
+                  "Classify Spam as Ham"), cex = 0.8,
+       bty = "n")
+abline(h=0.01, col ="grey", lwd = 3, lty = 2)
+text(-250, 0.05, pos = 4, "Type I Error = 0.01", col = cols[2])
+
+mtext(tau01, side = 1, line = 0.5, at = tau01, col = cols[3])
+segments(x0 = tau01, y0 = -.50, x1 = tau01, y1 = t2, 
+         lwd = 2, col = "grey")
+text(tau01 + 20, 0.05, pos = 4,
+     paste("Type II Error = ", round(t2, digits = 2)), 
+     col = cols[1])
+
+```
+
+##4
+```{r}
+emailPath = "~/Stat480/RDataScience/SpamAssassinMessages"
+dirNames = list.files(path = paste(emailPath, "messages", sep = .Platform$file.sep))
+# new recursive partitioning fitting 
+# Get the number of files in each directory.
+count = sapply(paste(emailPath, "messages", dirNames, sep = .Platform$file.sep), 
+       function(dir) length(list.files(dir)) )
+count = unname(count) - 1
+
+testIdx.Spam = seq(count[1]+1, count[1] + count[2])
+testIdx.Ham = seq(sum(count[1:4]+1), sum(count[1:5]))
+testIdx = c(testIdx.Spam, testIdx.Ham)
+
+emailDFrp = setupRpart(emailDF)
+
+testDF = emailDFrp[testIdx,]
+trainDF = emailDFrp[-testIdx,]
+
+rpartFit = rpart(isSpam ~ ., data = trainDF, method = "class")
+
+prp(rpartFit, extra = 1)
+
+# Get predictions for all data based on the model.
+predictions = predict(rpartFit, newdata = testDF[, names(testDF) != "isSpam"],
+                      type = "class")
+
+# See predictions for known ham.
+predsForHam = predictions[ testDF$isSpam == "F" ]
+summary(predsForHam)
+
+# Obtain the Type I error rate.
+sum(predsForHam == "T") / length(predsForHam)
+
+# Obtain the Type II error rate.
+predsForSpam = predictions[ testDF$isSpam == "T" ]
+sum(predsForSpam == "F") / length(predsForSpam)
+
+# compare two test data set
+testDF.spam = emailDFrp[testIdx.Spam,]
+predictions = predict(rpartFit, newdata = testDF.spam[, names(testDF.spam) != "isSpam"],
+                      type = "class")
+predsForSpam = predictions[ testDF.spam$isSpam == "F" ]
+summary(predsForSpam)
+
+# Obtain the Type I error rate.
+sum(predsForSpam == "T") / length(predsForSpam)
+
+# Obtain the Type II error rate. ??? no type II error
+predsForSpam = predictions[ testDF.spam$isSpam == "T" ]
+sum(predsForSpam == "F") / length(predsForSpam)
+
+
+testDF.ham = emailDFrp[testIdx.Ham,]
+predictions = predict(rpartFit, newdata = testDF.ham[, names(testDF.ham) != "isSpam"],
+                      type = "class")
+predsForHam = predictions[ testDF.ham$isSpam == "T" ]
+summary(predsForHam)
+
+# Obtain the Type I error rate.
+sum(predsForHam == "F") / length(predsForHam)
+
+# Obtain the Type II error rate. ??? no type II error
+predsForSpam = predictions[ testDF.spam$isSpam == "F" ]
+sum(predsForSpam == "T") / length(predsForSpam)
+
+# old recursive partitioning fitting 
+testDF = 
+  rbind( emailDFrp[ emailDFrp$isSpam == "T", ][testSpamIdx, ],
+         emailDFrp[emailDFrp$isSpam == "F", ][testHamIdx, ] )
+trainDF =
+  rbind( emailDFrp[emailDFrp$isSpam == "T", ][-testSpamIdx, ], 
+         emailDFrp[emailDFrp$isSpam == "F", ][-testHamIdx, ])
+
+# Fit the recursive partitioning model for spam as a function of all variables in the data frame.
+rpartFit = rpart(isSpam ~ ., data = trainDF, method = "class")
+
+prp(rpartFit, extra = 1)
+
+# Get predictions for all data based on the model.
+predictions = predict(rpartFit, 
+                      newdata = testDF[, names(testDF) != "isSpam"],
+                      type = "class")
+
+# See predictions for known ham.
+predsForHam = predictions[ testDF$isSpam == "F" ]
+summary(predsForHam)
+
+# Obtain the Type I error rate.
+sum(predsForHam == "T") / length(predsForHam)
+
+# Obtain the Type II error rate.
+predsForSpam = predictions[ testDF$isSpam == "T" ]
+sum(predsForSpam == "F") / length(predsForSpam)
+
+
+```
+
+
+
+
+
