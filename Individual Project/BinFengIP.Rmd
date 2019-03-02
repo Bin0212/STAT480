@@ -1,30 +1,30 @@
 ---
-title: "BinFengIP"
+title: "STAT480_Individual Project"
 author: "Bin Feng"
-date: "2/29/2019"
 output: pdf_document
 ---
 #Setup
 ```{r setup}
 # include library
-# bigmemory package used by biganalytics allows for R matrix-like operations on large data sets.
 library(biganalytics)
 library(ggplot2)
-
 library(rpart)
 library(RColorBrewer)
 library(rpart.plot)
 require("knitr")
-# set working directory
+# run setup code from another .R file
 source("IndividualProjectSetup.R")
+# set working directory
 opts_knit$set(root.dir = "~/Stat480/RDataScience/AirlineDelays")
 ```
+Since the "IndividualProjectSetup.R" file involves larger number of lines, it is directly called from another file instead of pasting every line in this file. Please put the setup file in the same directory while running this code. 
+
 #Airline Delay Exercises
 ##1
 Create a big.matrix object for the airline data from 1990 to 1995, and add an additional variable to the matrix that indicates if the arrival was delayed. The variable should be 1 for arrival delays greater than 0 and 0 for arrival delays of 0 or less. Be sure to show the contents of any script files you ran at command line and any commands you ran at command line to process the data. These command line steps can be included as text in the report.
 ```{r}
 # flight9095.csv was created in shell first by combining files from 1990 to 1995
-# shell code as show below:
+# shell code as show below, which is modified based on the code given in lectures
   # cp 1990.csv flight9095.csv
   #         for year in {1991..1995}
   #                 do
@@ -32,12 +32,14 @@ Create a big.matrix object for the airline data from 1990 to 1995, and add an ad
   # done
 
 # First time use, create a big.matrix and .desc file for future use
+# This code is modified based on the code given in lectures
+# additional variable "ifdelay" is added to indicates if the arrival was delayed
   # x <- read.big.matrix("flight9095.csv", header = TRUE, 
   #                      backingfile = "flight9095.bin",
   #                      descriptorfile = "flight9095.desc",
   #                      type = "integer", extraCols = "ifdelay")
 
-# Attach the same big matrix to y using the descriptor file. This allows to use 
+# Attach the same big matrix to x using the descriptor file. This allows to use 
 # an existing big matrix without recreating it.
 x <- attach.big.matrix("flight9095.desc")
 
@@ -56,32 +58,39 @@ perpos.delay
 # average known arrival time deviation from expected
 mean(x[,"ArrDelay"], na.rm = TRUE)
 ```
+Based on the output, the number of flights with known positive delayed arrival is 15362495; the number of flights without known positive delayed arrival is 15655464; the percentage of flights with known positive delayed arrivals is 49.52774% (denominator also include rows with NA); and average known arrival time deviation from expected  in the data 5.757513 minutes. Looking at the number of positive delayed arrivals and its percentage, we found that almost half of the total flights were in certain degree of delay. Such large number and percentage surprised me on how on time flights were in the 1990s. However, if we look at the average time deviation, we found that 5.757513 minutes is actually quite acceptable. Therefore, these numbers reveal us that although flights were very likely to be delayed in the 1990s but the overall delay time isn't significant.
 
 ##2
 Obtain quarterly results for arrival delay percentiles (include all numeric values for arrival delays), average known arrival deviations (again, include all numeric values for arrival delays), and percentages of flights with known positive delay. For the percentiles, obtain enough percentiles to make a plot from 5% to 95%. Be efficient and avoid going through the data more often than necessary.
 ```{r}
-# ??? why different than the value in Q1
+# split months into quarters 
 quarter <- split(1:nrow(x), floor(x[,"Month"]/3.1)) 
 
-# compute average known arrival deviations
+# computer quarterly results for average known arrivial deviations
 quarter.delay.ave <- foreach(quarter.id = quarter, .combine = c) %do% {
   mean(x[quarter.id, "ArrDelay"], na.rm = TRUE)
 }
-# quarterly arrivial deviations
 quarter.delay.ave
-# average deviations
-mean(quarter.delay.ave) # ??? why different than the value in Q1
 
+# compute quarterly percentages of flightes with known positive delay
+quarter.delay.per <- foreach(quarter.id = quarter, .combine = c) %do% {
+  sum(x[quarter.id, "ArrDelay"] > 0, na.rm = TRUE) / length(quarter.id)
+}
+quarter.delay.per
+```
+The quarterly results for average known arrivial deviations are 7.073707, 4.953986, 5.030579, and 6.031974 minutes for 1st, 2nd, 3rd, 4th quarter, respectively. The quarterly results for percentages of flights with know positive delay are 50.86707%, 48.80573%, 48.30486%, and 50.18343% for 1st, 2nd, 3rd, 4th quarter, respectively. Note that when computing the percentages, the denominator include also rows with NAs since they should also be counted as flights. Looking at these numbers, we note that the 1st quarter has the largest average delay time and percentage, and followed by the 4th quarter. Basically, during winter seasons and Chrismas seasons, flights are more likely to delay which is reasonable considering the worse weather and higher flight demands. The 2nd and 3rd quaters are the ones with lower arrivial delay times and percentages since the weather are normally better and demands are at a lower level. 
+
+```{r}
 # compute arrival delay percentiles
-myProbs <- seq(0.05, 0.95, 0.05)
+myProbs <- seq(0.05, 0.95, 0.01)
 
-# Use foreach to find the quantiles for each hour.
+# use foreach to find the quantiles for each hour.
 delayQuantiles <- foreach(quarter.id = quarter, .combine=cbind) %do% {
-  quantile(x[quarter.id, "ArrDelay"], myProbs, 
-           na.rm = TRUE)
+  quantile(x[quarter.id, "ArrDelay"], myProbs, na.rm = TRUE)
 }
 delayQuantiles <- cbind(myProbs, delayQuantiles)
 colnames(delayQuantiles) <- c("Percentile", "1","2","3","4")
+delayQuantiles
 
 # plot the quarterly arrival delay percentiles from 5% to 95% 
 ggplot(as.data.frame(delayQuantiles), aes(x=Percentile)) + 
@@ -90,23 +99,15 @@ ggplot(as.data.frame(delayQuantiles), aes(x=Percentile)) +
   geom_line(aes(y = delayQuantiles[,"3"], colour = "3")) + 
   geom_line(aes(y = delayQuantiles[,"4"], colour = "4")) + 
   xlab("Percentile") + ylab("Delay (min)") + theme(legend.title=element_blank())
-
-# compute quarterly percentages of flightes with known positive delay
-# is this quarterly???
-quarter.delay.per <- foreach(quarter.id = quarter, .combine = c) %do% {
-  sum(x[quarter.id, "ArrDelay"] > 0, na.rm = TRUE) / length(quarter.id)
-}
-quarter.delay.per
-
 ```
+The computed quarterly results for arrivial delay percentiles are shown and plotted above. In small percentiles, all four quarters are pretty close. Note that the plotted lines for 1st quarter is always on top in high percentiles, followed by the 4th quarter. The 2nd and 3rd quarters are at the bottom. Such observations agrees with the quarterly averages and percentages discussed in the previous chunk of code: the winter and holiday season results in higher delays while mid-year times results in lower delays.   
+Considering both chunk of codes and results discussed above, we found that for the time from 1990 to 1995, flights are more likely to be delayed during winter and holiday seasons because of the worse weather and higher flight demands; flights are less likely to be delayed during 2nd and 3rd quarters due to a better weather and lower demand level. 
 
 #Spam Detection Exercises
 ##3
 We used probabilities that a word did or did not appear in a message as the basis for Naive Bayes classificationin class. Now let's consider combining the words present and absent in the text with the hour of day the message was sent as the basis for a Naive Bayes classification.
 ```{r}
-#??? do we need to +0.5 for hour table
-#??? how to reference data.frame using apply
-#??? how to index spam???
+# create functions to create hourtable
 computeHrs =
   function(msgDF)
   {
@@ -136,39 +137,38 @@ computeHrs =
     # log odds
     wordTable["presentLogOdds", ] = 
       log(wordTable["spam",]) - log(wordTable["ham", ])
-    wordTable["absentLogOdds", ] = 
-      log((1 - wordTable["spam", ])) - log((1 -wordTable["ham", ]))
-    
+    # set hour absentLogOdds to be zero, because we don't need to add this prob.
+    wordTable["absentLogOdds", ] = 0
+  
     invisible(wordTable)
   }
-
+# calculate the hourtable based on training data
 hourTable = computeHrs(emailDF[c(-testHamIdx, -(testSpamIdx+numHam)),]) 
 
-computeHrsLLR = function(msgDF, hourTable)  #??? how to reference data.frame using apply
-{
-  sum(hourTable["presentLogOdds", msgDF["hour"]]) +
-    sum(hourTable["absentLogOdds", !msgDF["hour"]])
-}
-
 testIsSpam = rep(c(FALSE, TRUE), c(length(testHamIdx), length(testSpamIdx)))
-
-testLLR.hrs = apply(emailDF[c(testHamIdx, testSpamIdx+numHam),], 1,computeHrsLLR, hourTable) #??? how to index spam???
-tapply(testLLR.hrs, testIsSpam, summary)
-
+# calculate hourLLR
+testLLR.hrs = sapply(emailDF[c(testHamIdx, testSpamIdx+numHam),"hour"], computeMsgLLR, hourTable) 
+# tapply(testLLR.hrs, testIsSpam, summary)
+# calculate msgLLR
 testLLR.msg = sapply(msgWordsList[c(testHamIdx, testSpamIdx+numHam)], computeMsgLLR, trainTable)
-tapply(testLLR.msg, testIsSpam, summary)
-
+# tapply(testLLR.msg, testIsSpam, summary)
+# calculate totalLLR
 testLLR.all = testLLR.hrs + testLLR.msg
+# tapply(testLLR.all, testIsSpam, summary)
 
-tapply(testLLR.all, testIsSpam, summary)
-xI = typeIErrorRates(testLLR.all, testIsSpam) 
+# calculate type I&IIerror and determine a good threshold
+# choose the same type I error rate threshold (0.01) as discussed in class
+xI = typeIErrorRates(testLLR.all, testIsSpam)
 xII = typeIIErrorRates(testLLR.all, testIsSpam)
 tau01 = round(min(xI$values[xI$error <= 0.01]))
+tau01
 t2 = max(xII$error[ xII$values < tau01 ])
 t2
+```
+The above chunk of code done the following: 1) define a function "computeHrs" to compute the hourTable for preparation; 2) compute the log likelihood ratio (LLR) for word that did or did not appear in a message and hour of day the message was sent ,and add them together as the final LLR; 3) determine a threshold tau01 based on the type I error rate = 0.01; 4) calcute the corresponding type II error rate as well. The threshold determined is -43 at the type I error rate of 0.01, and the corresponding type II error rate is 0.02002503. Interestingly, all these numbers are the same as the ones calculated in class (-43, 0.02002503), which is based only on message text content. Such results are because the hour LLR is quite small and flattened out compared with the word LLR. Therefore, the hour infomation barely improve or hurt spam detection. 
 
-
-
+```{r}
+# plot type I and type II error rate
 cols = brewer.pal(9, "Set1")[c(3, 4, 5)]
 plot(xII$error ~ xII$values,  type = "l", col = cols[1], lwd = 3,
      xlim = c(-300, 250), ylim = c(0, 1),
@@ -189,106 +189,152 @@ text(tau01 + 20, 0.05, pos = 4,
      col = cols[1])
 
 ```
+The above plot shows the LLR based on the new defined Naive Bayes classification. Note that the plot is the quite the same as the one given in class. Therefore, the hour infomation barely improve or hurt spam detection. 
 
 ##4
+#(compare major classification features)
 ```{r}
 emailPath = "~/Stat480/RDataScience/SpamAssassinMessages"
 dirNames = list.files(path = paste(emailPath, "messages", sep = .Platform$file.sep))
-# new recursive partitioning fitting 
-# Get the number of files in each directory.
+## new recursive partitioning fitting 
+# get the number of files in each directory.
 count = sapply(paste(emailPath, "messages", dirNames, sep = .Platform$file.sep), 
        function(dir) length(list.files(dir)) )
+# -1 to remove the addition non-email file
 count = unname(count) - 1
 
-testIdx.Spam = seq(count[1]+1, count[1] + count[2])
-testIdx.Ham = seq(sum(count[1:4]+1), sum(count[1:5]))
+# define test ID based on the definition given in the question
+testIdx.Ham = seq(count[1]+1, count[1] + count[2])
+testIdx.Spam = seq(sum(count[1:4]+1), sum(count[1:5]))
 testIdx = c(testIdx.Spam, testIdx.Ham)
 
+# setup the emailDF
 emailDFrp = setupRpart(emailDF)
 
-testDF = emailDFrp[testIdx,]
-trainDF = emailDFrp[-testIdx,]
+# get test and train emailDF
+testDF.new = emailDFrp[testIdx,]
+trainDF.new = emailDFrp[-testIdx,]
 
-rpartFit = rpart(isSpam ~ ., data = trainDF, method = "class")
+# perform recursive partitioning fitting 
+rpartFit.new = rpart(isSpam ~ ., data = trainDF.new, method = "class")
+# plot the results
+prp(rpartFit.new, extra = 1)
+```
+Above is the partition results based on the new defined training data, which are from the easy_ham, hard_ham, and easy_spam directories. 
 
-prp(rpartFit, extra = 1)
-
-# Get predictions for all data based on the model.
-predictions = predict(rpartFit, newdata = testDF[, names(testDF) != "isSpam"],
-                      type = "class")
-
-# See predictions for known ham.
-predsForHam = predictions[ testDF$isSpam == "F" ]
-summary(predsForHam)
-
-# Obtain the Type I error rate.
-sum(predsForHam == "T") / length(predsForHam)
-
-# Obtain the Type II error rate.
-predsForSpam = predictions[ testDF$isSpam == "T" ]
-sum(predsForSpam == "F") / length(predsForSpam)
-
-# compare two test data set
-testDF.spam = emailDFrp[testIdx.Spam,]
-predictions = predict(rpartFit, newdata = testDF.spam[, names(testDF.spam) != "isSpam"],
-                      type = "class")
-predsForSpam = predictions[ testDF.spam$isSpam == "F" ]
-summary(predsForSpam)
-
-# Obtain the Type I error rate.
-sum(predsForSpam == "T") / length(predsForSpam)
-
-# Obtain the Type II error rate. ??? no type II error
-predsForSpam = predictions[ testDF.spam$isSpam == "T" ]
-sum(predsForSpam == "F") / length(predsForSpam)
-
-
-testDF.ham = emailDFrp[testIdx.Ham,]
-predictions = predict(rpartFit, newdata = testDF.ham[, names(testDF.ham) != "isSpam"],
-                      type = "class")
-predsForHam = predictions[ testDF.ham$isSpam == "T" ]
-summary(predsForHam)
-
-# Obtain the Type I error rate.
-sum(predsForHam == "F") / length(predsForHam)
-
-# Obtain the Type II error rate. ??? no type II error
-predsForSpam = predictions[ testDF.spam$isSpam == "F" ]
-sum(predsForSpam == "T") / length(predsForSpam)
-
-# old recursive partitioning fitting 
-testDF = 
-  rbind( emailDFrp[ emailDFrp$isSpam == "T", ][testSpamIdx, ],
+```{r}
+## old recursive partitioning fitting 
+# get test and train emailDF
+testDF.old = 
+  rbind( emailDFrp[emailDFrp$isSpam == "T", ][testSpamIdx, ],
          emailDFrp[emailDFrp$isSpam == "F", ][testHamIdx, ] )
-trainDF =
+trainDF.old =
   rbind( emailDFrp[emailDFrp$isSpam == "T", ][-testSpamIdx, ], 
          emailDFrp[emailDFrp$isSpam == "F", ][-testHamIdx, ])
 
-# Fit the recursive partitioning model for spam as a function of all variables in the data frame.
-rpartFit = rpart(isSpam ~ ., data = trainDF, method = "class")
+# perform recursive partitioning fitting 
+rpartFit.old = rpart(isSpam ~ ., data = trainDF.old, method = "class")
+# plot the results
+prp(rpartFit.old, extra = 1)
+```
+Above is the partition results based on the old defined training data, which uses random sampling.  
+Comparing the most important classification features between the two models shown above, similarities include: 1) the first partition features are both "perCaps"; 2) "bodyChar" is used as second partition feature in both models. Differebces between the two model include: 1) the threshold for the major features (the first three) are slightly different for "perCaps" and "bodyChar"; 2) "subBlank" appears as the major feature in the new model while "perHTML" is used in the old model. Such differences occur because there is certain degree of biase when using easy_ham, hard_ham, and easy_spam directories as the training dataset. Some properties exist among these three directories may not be available in the other two test directiory. 
 
-prp(rpartFit, extra = 1)
-
+#(compare test error rates)
+```{r}
+## new model
 # Get predictions for all data based on the model.
-predictions = predict(rpartFit, 
-                      newdata = testDF[, names(testDF) != "isSpam"],
+predictions.new = predict(rpartFit.new, newdata = testDF.new[, names(testDF.new) != "isSpam"],
                       type = "class")
 
 # See predictions for known ham.
-predsForHam = predictions[ testDF$isSpam == "F" ]
-summary(predsForHam)
+predsForHam.new = predictions.new[ testDF.new$isSpam == "F" ]
+# summary(predsForHam.new)
 
 # Obtain the Type I error rate.
-sum(predsForHam == "T") / length(predsForHam)
+sum(predsForHam.new == "T") / length(predsForHam.new)
 
 # Obtain the Type II error rate.
-predsForSpam = predictions[ testDF$isSpam == "T" ]
-sum(predsForSpam == "F") / length(predsForSpam)
+predsForSpam.new = predictions.new[ testDF.new$isSpam == "T" ]
+sum(predsForSpam.new == "F") / length(predsForSpam.new)
 
+## old model
+# Get predictions for all data based on the model.
+predictions.old = predict(rpartFit.old, newdata = testDF.old[, names(testDF.new) != "isSpam"],
+                      type = "class")
 
+# See predictions for known ham.
+predsForHam.old = predictions.old[ testDF.old$isSpam == "F" ]
+# summary(predsForHam.old)
+
+# Obtain the Type I error rate.
+sum(predsForHam.old == "T") / length(predsForHam.old)
+
+# Obtain the Type II error rate.
+predsForSpam.old = predictions.old[ testDF.old$isSpam == "T" ]
+sum(predsForSpam.old == "F") / length(predsForSpam.old)
 ```
+Above chunk of code compare error rates for the model using the new training and test data to the rates found using randomly sampled data. Note that for type I error, the new model has a better performance than the old model (0.007857143 < 0.05394907). But for type II error, the new model has a worse performance than the old model (0.3421808 > 0.1564456). Such differences occur because there is certain degree of biase when using easy_ham, hard_ham, and easy_spam directories as the training dataset. Some properties exist among these three directories may not be available in the other two test directiory. 
 
+#(compare error rates for easy_ham_2)
+```{r}
+testDF.ham = emailDFrp[testIdx.Ham,]
+## new model
+predictions.new = predict(rpartFit.new, newdata = testDF.ham[, names(testDF.ham) != "isSpam"],
+                      type = "class")
+predsForSpam.new = predictions.new[ testDF.ham$isSpam == "F" ]
+# summary(predsForSpam.new)
 
+# Obtain the Type I error rate.
+sum(predsForSpam.new == "T") / length(predsForSpam.new)
 
+# Obtain the Type II error rate. 
+predsForSpam.new = predictions.new[ testDF.ham$isSpam == "T" ]
+sum(predsForSpam.new == "F") / length(predsForSpam.new)
 
+## old model
+predictions.old = predict(rpartFit.old, newdata = testDF.ham[, names(testDF.ham) != "isSpam"],
+                      type = "class")
+predsForSpam.old = predictions.old[ testDF.ham$isSpam == "F" ]
+# summary(predsForSpam.old)
 
+# Obtain the Type I error rate.
+sum(predsForSpam.old == "T") / length(predsForSpam.old)
+
+# Obtain the Type II error rate. 
+predsForSpam.old = predictions.old[ testDF.ham$isSpam == "T" ]
+sum(predsForSpam.old == "F") / length(predsForSpam.old)
+```
+Note that type II error is not available here since all the test data are ham. Also, note that the type I error for new model is the same while type I error for old model has improved. 
+
+#(compare error rates for easy_spam_2)
+```{r}
+testDF.spam = emailDFrp[testIdx.Spam,]
+## new model
+predictions.new = predict(rpartFit.new, newdata = testDF.spam[, names(testDF.spam) != "isSpam"],
+                      type = "class")
+predsForSpam.new = predictions.new[ testDF.spam$isSpam == "F" ]
+# summary(predsForSpam.new)
+
+# Obtain the Type I error rate.
+sum(predsForSpam.new == "T") / length(predsForSpam.new)
+
+# Obtain the Type II error rate. 
+predsForSpam.new = predictions.new[ testDF.spam$isSpam == "T" ]
+sum(predsForSpam.new == "F") / length(predsForSpam.new)
+
+## old model
+predictions.old = predict(rpartFit.old, newdata = testDF.spam[, names(testDF.spam) != "isSpam"],
+                      type = "class")
+predsForSpam.old = predictions.old[ testDF.spam$isSpam == "F" ]
+# summary(predsForSpam.old)
+
+# Obtain the Type I error rate.
+sum(predsForSpam.old == "T") / length(predsForSpam.old)
+
+# Obtain the Type II error rate. 
+predsForSpam.old = predictions.old[ testDF.spam$isSpam == "T" ]
+sum(predsForSpam.old == "F") / length(predsForSpam.old)
+```
+Note that type I error is not available here since all the test data are spam. Also, note that the type II error for new model is the same while type II error for old model has improved.   
+Based on the previous three chunks of code, we notice that for the new model, type I&II errors are the same regardless if the test data is seperated or not. But for the old model ,type I$II errors have improved when testing on easy_ham_2 and easy_spam_2. This is because the training dataset used by old model has already contain some data from easy_ham_2 and easy_spam_2 since the index is randomly assigned among all data. Therefore, when using the test dataset, which has some same training data in it, the old model's performance will definitely improved compared with a totally new testing dataset. 
