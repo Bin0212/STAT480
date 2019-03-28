@@ -1,0 +1,18 @@
+1. Cancellation/Delay arrival or departure/Number of flights
+	- Difference between two years
+	- Difference in time (storm, major historical event?)
+
+2. Carrier difference (number of, delay, cancellation, AirTime, etc.)
+	- Difference between two years
+	- Difference in time 
+
+3. Origin - Dest (line plot) link to airports table
+
+4. Manufacturer change
+	- Difference between two years
+
+
+Data cleaning
+Merging tables
+Feature generation
+Dummy coding
