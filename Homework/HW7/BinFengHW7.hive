@@ -1,0 +1,54 @@
+-- Exercise 1
+CREATE TABLE stocks (market STRING, stocksymbol STRING, datemdy STRING, price_open FLOAT, 
+    price_high FLOAT, price_low FLOAT, price_close FLOAT, volume INT, price_adj_close FLOAT)
+ROW FORMAT DELIMITED
+    FIELDS TERMINATED BY ',';
+
+LOAD DATA INPATH '/user/binfeng2/input/HW7/stocks.csv'
+OVERWRITE INTO TABLE stocks;
+
+SELECT * FROM stocks LIMIT 5;
+
+--Exercise 2
+CREATE TABLE IBM AS 
+SELECT * FROM stocks WHERE market = 'NYSE' AND stocksymbol = 'IBM';
+
+SELECT * FROM stocks LIMIT 5;
+
+SELECT price_high, datemdy
+FROM(
+    SELECT MAX(price_high) AS high
+    FROM IBM
+) tmp, IBM
+WHERE tmp.high = IBM.price_high;
+
+SELECT price_low, datemdy
+FROM(
+    SELECT MIN(price_low) AS low
+    FROM IBM
+) tmp, IBM
+WHERE tmp.low = IBM.price_low;
+
+-- Exercise 3
+CREATE VIEW max_spread AS 
+SELECT MAX(price_high - price_low) AS spread, market AS market_name
+FROM stocks 
+GROUP BY stocksymbol, market;
+
+SELECT MIN(spread)
+FROM max_spread;
+
+SELECT AVG(spread)
+FROM max_spread;
+
+SELECT MAX(spread)
+FROM max_spread;
+
+-- Exercise 4
+SELECT stocks.market AS market, stocks.stocksymbol AS stocksymbol, tmp.s AS spread, stocks.datemdy AS spread_date
+FROM(
+    SELECT MAX(spread) AS s, market_name AS n
+    FROM max_spread
+    GROUP BY market_name
+    ) tmp, stocks
+WHERE tmp.s = (stocks.price_high - stocks.price_low) AND tmp.n = stocks.market;
