@@ -1,0 +1,56 @@
+All temperatures are in tenths of degrees Celsius.
+
+Exercise 1
+Here are 5 observations from the merged table. The fields are usaf, year, temperature, and station name. 
+[glosemey@sp19-0101 ~]$ hadoop fs -cat merged5dir/part*
+11060	1929	0	ROEST III
+11060	1929	11	ROEST III
+11060	1929	-50	ROEST III
+11060	1929	-39	ROEST III
+11060	1929	-28	ROEST III
+
+
+Exercise 2
+These are 10 observations for station, count, min, average, and max temperature. The fields are in that specified order.
+[glosemey@sp19-0101 ~]$ hadoop fs -cat ctminavgmax10dir/part*
+LVIV	332	-400	60.653614457831324	289
+RIGA	166	-278	-63.433734939759034	50
+ROME	61	22	116.55737704918033	189
+WICK	368	-17	64.70108695652173	156
+BREST	268	39	129.3320895522388	239
+LARNE	275	0	77.47636363636363	167
+PINSK	159	-100	68.00628930817611	278
+TIREE	276	22	80.3731884057971	139
+AACHEN	225	-200	10.848888888888888	122
+BREMEN	303	-72	106.13531353135313	278
+
+
+
+Exercise 3
+The station with lowest recorded temperature in the data is Sodankyla.
+[glosemey@sp19-0101 ~]$ hadoop fs -cat lowest/part*
+SODANKYLA
+
+Data is not available for all years at this station. The year, min, average, and max recorded temperatures for available years follow.
+[glosemey@sp19-0101 ~]$ hadoop fs -cat minavgmaxforlowestbyyear/part*
+SODANKYLA	1920	-344	14.904371584699453	272
+SODANKYLA	1921	-417	-5.7967032967032965	233
+SODANKYLA	1922	-400	-9.691666666666666	267
+SODANKYLA	1923	-394	-5.237877401646844	233
+SODANKYLA	1924	-456	0.8650865998176845	289
+SODANKYLA	1925	-378	-2.5712971481140756	311
+SODANKYLA	1926	-411	-12.684692942254813	261
+
+
+
+Exercise 4
+The station with largest deviation above the average was in Aberdeen, and the deviation was 42.3 degrees Celsius.
+[glosemey@sp19-0101 ~]$ hadoop fs -cat largestabove/part*
+ABERDEEN/DYCE AIRPO	423.15497382198953
+
+The laregst deviations below the mean at this location by year follows. Again, data is not available for all years.
+[glosemey@sp19-0101 ~]$ hadoop fs -cat aberdeenbelow/part*
+1926	97.5126050420168
+1927	382.4566473988439
+1928	241.248730964467
+1929	127.47424892703863
